@@ -7,8 +7,8 @@ import {
   LayoutDashboard, BarChart3, Settings, LogOut
 } from 'lucide-react';
 import { format } from 'date-fns';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import TrainingPlan from '@/components/TrainingPlan';
+import WeeklyLoadChart from '@/components/WeeklyLoadChart';
 
 // --- Types ---
 type TrainingActivity = {
@@ -252,28 +252,7 @@ export default async function Home() {
               {/* Weekly Load Chart */}
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                 <h3 className="font-bold text-lg text-slate-900 mb-6">Weekly Load</h3>
-                <div className="h-48 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={chartData}>
-                      <XAxis 
-                        dataKey="name" 
-                        axisLine={false} 
-                        tickLine={false} 
-                        tick={{fill: '#94a3b8', fontSize: 12}} 
-                        dy={10}
-                      />
-                      <Tooltip 
-                        cursor={{fill: '#f1f5f9'}}
-                        contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}}
-                      />
-                      <Bar dataKey="dist" radius={[4, 4, 0, 0]}>
-                        {chartData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.dist > 100 ? '#4f46e5' : '#cbd5e1'} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
+                <WeeklyLoadChart data={chartData} />
               </div>
 
               {/* AI Insight Card */}
