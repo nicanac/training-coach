@@ -1,7 +1,7 @@
 
 'use client'
 
-import { useState, useTransition } from 'react';
+import { useState, useEffect, useTransition } from 'react';
 import { generateTrainingPlan, DailyPlan, syncGarminData } from '@/app/actions';
 import { Card } from '@/components/ui/card';
 import { Loader2, RefreshCw, ChevronRight } from 'lucide-react';
@@ -9,6 +9,11 @@ import { Loader2, RefreshCw, ChevronRight } from 'lucide-react';
 export default function TrainingPlan() {
   const [plan, setPlan] = useState<DailyPlan[] | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  // Load plan on mount (useEffect, not during render)
+  useEffect(() => {
+    handleGenerate();
+  }, []);
 
   const handleGenerate = () => {
     startTransition(async () => {
@@ -21,11 +26,6 @@ export default function TrainingPlan() {
     alert("Triggering Garmin Sync... (This runs in background)");
     syncGarminData();
   };
-
-  if (!plan && !isPending) {
-    // Auto-load on mount effect could go here, but button for now
-    handleGenerate();
-  }
 
   return (
     <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
@@ -43,6 +43,8 @@ export default function TrainingPlan() {
 
       <div className="space-y-4">
         {isPending && <div className="text-center py-8 text-slate-400">Analyzing fatigue & race goals...</div>}
+        
+        {!isPending && !plan && <div className="text-center py-8 text-slate-400">Loading plan...</div>}
         
         {plan?.map((day, i) => (
           <div key={i} className="flex items-start gap-4 p-4 rounded-xl border border-slate-100 hover:border-indigo-100 transition-all bg-slate-50/50 hover:bg-white">
