@@ -1,65 +1,128 @@
-import Image from "next/image";
 
-export default function Home() {
+import { supabase } from '@/lib/supabase';
+import { Activity, Dumbbell, Bike, Waves, Calendar, Clock, Trophy } from 'lucide-react';
+import { format } from 'date-fns';
+
+// Define the shape of our data
+type TrainingActivity = {
+  activity_id: number;
+  name: string;
+  type: string;
+  start_time: string;
+  distance: number;
+  duration: number;
+  calories: number;
+};
+
+async function getActivities() {
+  const { data, error } = await supabase
+    .from('activities')
+    .select('*')
+    .order('start_time', { ascending: false })
+    .limit(20);
+
+  if (error) {
+    console.error('Error fetching activities:', error);
+    return [];
+  }
+  return data as TrainingActivity[];
+}
+
+function formatDuration(seconds: number) {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  return `${h}h ${m}m`;
+}
+
+function getActivityIcon(type: string) {
+  const t = type.toLowerCase();
+  if (t.includes('cycling') || t.includes('cycling')) return <Bike className="w-5 h-5 text-blue-500" />;
+  if (t.includes('running')) return <Activity className="w-5 h-5 text-green-500" />;
+  if (t.includes('swimming')) return <Waves className="w-5 h-5 text-cyan-500" />;
+  if (t.includes('strength')) return <Dumbbell className="w-5 h-5 text-red-500" />;
+  return <Activity className="w-5 h-5 text-gray-500" />;
+}
+
+export default async function Home() {
+  const activities = await getActivities();
+
+  // Simple stats from the latest 20
+  const totalDistance = activities.reduce((acc, curr) => acc + (curr.distance || 0), 0) / 1000;
+  const totalTime = activities.reduce((acc, curr) => acc + (curr.duration || 0), 0);
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <main className="min-h-screen bg-gray-50 p-8">
+      <div className="max-w-5xl mx-auto space-y-8">
+        
+        {/* Header */}
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Training Dashboard</h1>
+            <p className="text-gray-500">Welcome back, Coach.</p>
+          </div>
+          <div className="flex gap-4">
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center gap-3">
+              <div className="bg-orange-100 p-2 rounded-lg">
+                <Trophy className="w-6 h-6 text-orange-600" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">Recent Distance</p>
+                <p className="text-xl font-bold">{totalDistance.toFixed(1)} km</p>
+              </div>
+            </div>
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center gap-3">
+              <div className="bg-blue-100 p-2 rounded-lg">
+                <Clock className="w-6 h-6 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">Recent Time</p>
+                <p className="text-xl font-bold">{formatDuration(totalTime)}</p>
+              </div>
+            </div>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+
+        {/* Activity List */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="p-6 border-b border-gray-100">
+            <h2 className="text-lg font-semibold text-gray-800">Recent Activities</h2>
+          </div>
+          <div className="divide-y divide-gray-100">
+            {activities.map((activity) => (
+              <div key={activity.activity_id} className="p-4 hover:bg-gray-50 transition-colors flex items-center justify-between group">
+                <div className="flex items-center gap-4">
+                  <div className="bg-gray-50 p-3 rounded-full group-hover:bg-white group-hover:shadow-sm transition-all">
+                    {getActivityIcon(activity.type)}
+                  </div>
+                  <div>
+                    <h3 className="font-medium text-gray-900">{activity.name}</h3>
+                    <div className="flex items-center gap-2 text-sm text-gray-500">
+                      <Calendar className="w-3 h-3" />
+                      {format(new Date(activity.start_time), 'MMM d, yyyy @ HH:mm')}
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-8 text-sm">
+                  <div className="text-right w-24">
+                    <p className="font-medium text-gray-900">{(activity.distance / 1000).toFixed(2)} km</p>
+                    <p className="text-gray-400 text-xs">Distance</p>
+                  </div>
+                  <div className="text-right w-24">
+                    <p className="font-medium text-gray-900">{formatDuration(activity.duration)}</p>
+                    <p className="text-gray-400 text-xs">Duration</p>
+                  </div>
+                  <div className="text-right w-24 hidden sm:block">
+                    <p className="font-medium text-gray-900">{activity.calories || '-'}</p>
+                    <p className="text-gray-400 text-xs">Calories</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
-      </main>
-    </div>
+
+      </div>
+    </main>
   );
 }
