@@ -2,6 +2,7 @@
 import { supabase } from '@/lib/supabase';
 import { Activity, Dumbbell, Bike, Waves, Calendar, Clock, Trophy } from 'lucide-react';
 import { format } from 'date-fns';
+import DashboardInsights from '@/components/DashboardInsights';
 
 // Define the shape of our data
 type TrainingActivity = {
@@ -19,7 +20,7 @@ async function getActivities() {
     .from('activities')
     .select('*')
     .order('start_time', { ascending: false })
-    .limit(20);
+    .limit(50); // Increased limit for better analysis
 
   if (error) {
     console.error('Error fetching activities:', error);
@@ -52,7 +53,7 @@ export default async function Home() {
 
   return (
     <main className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-5xl mx-auto space-y-8">
+      <div className="max-w-6xl mx-auto space-y-8">
         
         {/* Header */}
         <div className="flex justify-between items-center">
@@ -81,6 +82,9 @@ export default async function Home() {
             </div>
           </div>
         </div>
+
+        {/* Insights & Plan Section */}
+        <DashboardInsights activities={activities} />
 
         {/* Activity List */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
