@@ -3,7 +3,7 @@ import React from 'react';
 import { supabase } from '@/lib/supabase';
 import { 
   Activity, Bike, Waves, Zap, TrendingUp, Calendar, 
-  Clock, Trophy, ChevronRight, MoreHorizontal, User,
+  Clock, Trophy, ChevronRight, User,
   LayoutDashboard, BarChart3, Settings, LogOut
 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -30,7 +30,7 @@ function formatDuration(seconds: number) {
 
 function getActivityColor(type: string) {
   const t = type.toLowerCase();
-  if (t.includes('cycling') || t.includes('cycling')) return 'text-blue-500 bg-blue-50 border-blue-100';
+  if (t.includes('cycling')) return 'text-blue-500 bg-blue-50 border-blue-100';
   if (t.includes('running')) return 'text-emerald-500 bg-emerald-50 border-emerald-100';
   if (t.includes('swimming')) return 'text-cyan-500 bg-cyan-50 border-cyan-100';
   if (t.includes('strength')) return 'text-rose-500 bg-rose-50 border-rose-100';
@@ -47,9 +47,8 @@ function getActivityIcon(type: string) {
 }
 
 // --- Components ---
-
 const Sidebar = () => (
-  <div className="hidden lg:flex flex-col w-64 bg-slate-900 h-screen fixed left-0 top-0 text-white p-6">
+  <aside className="hidden lg:flex flex-col w-64 bg-slate-900 h-screen fixed left-0 top-0 text-white p-6 z-50">
     <div className="flex items-center gap-3 mb-10">
       <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center font-bold text-lg">
         S
@@ -91,7 +90,7 @@ const Sidebar = () => (
         <LogOut className="w-4 h-4 text-slate-500 cursor-pointer hover:text-white" />
       </div>
     </div>
-  </div>
+  </aside>
 );
 
 const StatCard = ({ title, value, sub, icon, trend }: { title: string, value: string, sub: string, icon: React.ReactNode, trend?: string }) => (
@@ -116,31 +115,26 @@ const StatCard = ({ title, value, sub, icon, trend }: { title: string, value: st
 
 const ActivityRow = ({ activity }: { activity: TrainingActivity }) => (
   <div className="group flex items-center justify-between p-4 hover:bg-slate-50 rounded-xl transition-all cursor-pointer border border-transparent hover:border-slate-100">
-    <div className="flex items-center gap-4">
-      <div className={`p-3 rounded-xl border ${getActivityColor(activity.type)}`}>
+    <div className="flex items-center gap-4 min-w-0 flex-1">
+      <div className={`p-3 rounded-xl border flex-shrink-0 ${getActivityColor(activity.type)}`}>
         {getActivityIcon(activity.type)}
       </div>
-      <div>
-        <h4 className="font-semibold text-slate-900">{activity.name}</h4>
+      <div className="min-w-0 flex-1">
+        <h4 className="font-semibold text-slate-900 truncate">{activity.name}</h4>
         <div className="flex items-center gap-3 text-xs text-slate-500 mt-1">
           <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {format(new Date(activity.start_time), 'MMM d')}</span>
           <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {format(new Date(activity.start_time), 'HH:mm')}</span>
         </div>
       </div>
     </div>
-    <div className="flex items-center gap-8">
+    <div className="flex items-center gap-6 ml-4">
       <div className="text-right hidden sm:block">
-        <p className="font-bold text-slate-900">{(activity.distance / 1000).toFixed(1)} <span className="text-xs font-normal text-slate-500">km</span></p>
-      </div>
-      <div className="text-right hidden sm:block">
-        <p className="font-medium text-slate-900">{formatDuration(activity.duration)}</p>
+        <p className="font-bold text-slate-900 whitespace-nowrap">{(activity.distance / 1000).toFixed(1)} <span className="text-xs font-normal text-slate-500">km</span></p>
       </div>
       <div className="text-right hidden md:block">
-        <span className="text-xs font-medium px-2.5 py-1 bg-slate-100 text-slate-600 rounded-full">
-          {Math.round(activity.calories || 0)} kcal
-        </span>
+        <p className="font-medium text-slate-900 whitespace-nowrap">{formatDuration(activity.duration)}</p>
       </div>
-      <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-indigo-500 transition-colors" />
+      <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-indigo-500 transition-colors flex-shrink-0" />
     </div>
   </div>
 );
@@ -151,7 +145,7 @@ async function getActivities() {
     .from('activities')
     .select('*')
     .order('start_time', { ascending: false })
-    .limit(7); // Just the last week for the list
+    .limit(7);
 
   if (error) return [];
   return data as TrainingActivity[];
@@ -161,11 +155,9 @@ async function getActivities() {
 export default async function Home() {
   const activities = await getActivities();
   
-  // Calculate totals
   const totalDist = activities.reduce((acc, curr) => acc + (curr.distance || 0), 0) / 1000;
   const totalTime = activities.reduce((acc, curr) => acc + (curr.duration || 0), 0);
   
-  // Mock Chart Data
   const chartData = [
     { name: 'Mon', dist: 12 },
     { name: 'Tue', dist: 45 },
@@ -177,16 +169,16 @@ export default async function Home() {
   ];
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC]">
+    <div className="min-h-screen bg-slate-50">
       <Sidebar />
       
-      <main className="lg:ml-64 p-8">
-        <div className="max-w-6xl mx-auto space-y-8">
+      <main className="lg:ml-64 p-4 md:p-8">
+        <div className="max-w-7xl mx-auto space-y-6">
           
           {/* Header */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-bold text-slate-900">Training Overview</h1>
+              <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Training Overview</h1>
               <p className="text-slate-500 mt-1">Track your progress towards <span className="font-semibold text-indigo-600">The Ascend XTri</span></p>
             </div>
             <div className="flex gap-3">
@@ -200,41 +192,41 @@ export default async function Home() {
           </div>
 
           {/* Stats Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
             <StatCard 
               title="Weekly Distance" 
               value={`${totalDist.toFixed(1)} km`} 
               sub="Total volume"
-              icon={<Trophy className="w-6 h-6 text-orange-500" />}
+              icon={<Trophy className="w-6 h-6" />}
               trend="+12%"
             />
             <StatCard 
               title="Training Time" 
               value={formatDuration(totalTime)} 
               sub="Active hours"
-              icon={<Clock className="w-6 h-6 text-blue-500" />}
+              icon={<Clock className="w-6 h-6" />}
             />
             <StatCard 
               title="Recovery Status" 
               value="92%" 
               sub="Ready to train"
-              icon={<Zap className="w-6 h-6 text-green-500" />}
+              icon={<Zap className="w-6 h-6" />}
             />
             <StatCard 
               title="Next Race" 
               value="104 Days" 
               sub="Swimrun Verdon"
-              icon={<Calendar className="w-6 h-6 text-purple-500" />}
+              icon={<Calendar className="w-6 h-6" />}
             />
           </div>
 
-          {/* Main Content Area */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Main Content Grid */}
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
             
-            {/* Left: Activity Feed */}
-            <div className="lg:col-span-2 space-y-6">
+            {/* Left Column: Activities (takes 2 cols on XL screens) */}
+            <div className="xl:col-span-2 space-y-6">
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                <div className="p-4 md:p-6 border-b border-slate-100 flex justify-between items-center">
                   <h3 className="font-bold text-lg text-slate-900">Recent Activities</h3>
                   <button className="text-indigo-600 text-sm font-medium hover:text-indigo-700">View All</button>
                 </div>
@@ -246,19 +238,19 @@ export default async function Home() {
               </div>
             </div>
 
-            {/* Right: Insights & Plan */}
-            <div className="space-y-6">
+            {/* Right Column: Charts & Plans */}
+            <div className="xl:col-span-1 space-y-6">
               
               {/* Weekly Load Chart */}
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                <h3 className="font-bold text-lg text-slate-900 mb-6">Weekly Load</h3>
+              <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-200">
+                <h3 className="font-bold text-lg text-slate-900 mb-4">Weekly Load</h3>
                 <WeeklyLoadChart data={chartData} />
               </div>
 
               {/* AI Insight Card */}
               <div className="bg-gradient-to-br from-indigo-600 to-purple-700 p-6 rounded-2xl shadow-lg text-white">
                 <div className="flex items-start gap-4">
-                  <div className="p-3 bg-white/10 rounded-xl backdrop-blur-sm">
+                  <div className="p-3 bg-white/10 rounded-xl backdrop-blur-sm flex-shrink-0">
                     <Zap className="w-6 h-6 text-yellow-300" />
                   </div>
                   <div>
