@@ -1,25 +1,18 @@
 
 import React from 'react';
-import { supabase } from '@/lib/supabase';
-import { 
-  Activity, Bike, Waves, Zap, TrendingUp, Calendar, 
+import { garmin, localToday, weekStart, type ApiActivity, type PeriodSummary, type Sport } from '@/lib/garmin-api';
+import {
+  Activity, Bike, Waves, Zap, TrendingUp, TrendingDown, Calendar,
   Clock, Trophy, ChevronRight, User,
   LayoutDashboard, BarChart3, Settings, LogOut
 } from 'lucide-react';
-import { format } from 'date-fns';
+import { addDays, format, parseISO, subDays } from 'date-fns';
 import TrainingPlan from '@/components/TrainingPlan';
 import WeeklyLoadChart from '@/components/WeeklyLoadChart';
+import SyncGarminButton from '@/components/SyncGarminButton';
 
-// --- Types ---
-type TrainingActivity = {
-  activity_id: number;
-  name: string;
-  type: string;
-  start_time: string;
-  distance: number;
-  duration: number;
-  calories: number;
-};
+// Data comes from garmin-api per request (its answers are cached 5 min by fetch), never at build time.
+export const dynamic = 'force-dynamic';
 
 // --- Helper Functions ---
 function formatDuration(seconds: number) {
@@ -28,23 +21,24 @@ function formatDuration(seconds: number) {
   return `${h}h ${m}m`;
 }
 
-function getActivityColor(type: string) {
-  const t = type.toLowerCase();
-  if (t.includes('cycling')) return 'text-blue-500 bg-blue-50 border-blue-100';
-  if (t.includes('running')) return 'text-emerald-500 bg-emerald-50 border-emerald-100';
-  if (t.includes('swimming')) return 'text-cyan-500 bg-cyan-50 border-cyan-100';
-  if (t.includes('strength')) return 'text-rose-500 bg-rose-50 border-rose-100';
+// `sport` is garmin-api's grouping of Garmin's ~100 activity types (road_biking, indoor_cycling... -> bike)
+function getActivityColor(sport: Sport) {
+  if (sport === 'bike') return 'text-blue-500 bg-blue-50 border-blue-100';
+  if (sport === 'run') return 'text-emerald-500 bg-emerald-50 border-emerald-100';
+  if (sport === 'swim') return 'text-cyan-500 bg-cyan-50 border-cyan-100';
+  if (sport === 'strength') return 'text-rose-500 bg-rose-50 border-rose-100';
   return 'text-slate-500 bg-slate-50 border-slate-100';
 }
 
-function getActivityIcon(type: string) {
-  const t = type.toLowerCase();
-  if (t.includes('cycling')) return <Bike className="w-5 h-5" />;
-  if (t.includes('running')) return <Activity className="w-5 h-5" />;
-  if (t.includes('swimming')) return <Waves className="w-5 h-5" />;
-  if (t.includes('strength')) return <Zap className="w-5 h-5" />;
+function getActivityIcon(sport: Sport) {
+  if (sport === 'bike') return <Bike className="w-5 h-5" />;
+  if (sport === 'run') return <Activity className="w-5 h-5" />;
+  if (sport === 'swim') return <Waves className="w-5 h-5" />;
+  if (sport === 'strength') return <Zap className="w-5 h-5" />;
   return <Activity className="w-5 h-5" />;
 }
+
+const READINESS_LABEL: Record<string, string> = { PRIME: 'Prime', HIGH: 'High', MODERATE: 'Moderate', LOW: 'Low', POOR: 'Poor' };
 
 // --- Components ---
 const Sidebar = () => (
@@ -93,15 +87,15 @@ const Sidebar = () => (
   </aside>
 );
 
-const StatCard = ({ title, value, sub, icon, trend }: { title: string, value: string, sub: string, icon: React.ReactNode, trend?: string }) => (
+const StatCard = ({ title, value, sub, icon, trend }: { title: string, value: string, sub: string, icon: React.ReactNode, trend?: { label: string, up: boolean } }) => (
   <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
     <div className="flex justify-between items-start mb-4">
       <div className="p-3 bg-slate-50 rounded-xl text-slate-600">
         {icon}
       </div>
       {trend && (
-        <span className="text-xs font-medium px-2 py-1 bg-green-50 text-green-700 rounded-full flex items-center gap-1">
-          <TrendingUp className="w-3 h-3" /> {trend}
+        <span className={`text-xs font-medium px-2 py-1 rounded-full flex items-center gap-1 ${trend.up ? 'bg-green-50 text-green-700' : 'bg-rose-50 text-rose-700'}`}>
+          {trend.up ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />} {trend.label}
         </span>
       )}
     </div>
@@ -113,26 +107,27 @@ const StatCard = ({ title, value, sub, icon, trend }: { title: string, value: st
   </div>
 );
 
-const ActivityRow = ({ activity }: { activity: TrainingActivity }) => (
+const ActivityRow = ({ activity }: { activity: ApiActivity }) => (
   <div className="group flex items-center justify-between p-4 hover:bg-slate-50 rounded-xl transition-all cursor-pointer border border-transparent hover:border-slate-100">
     <div className="flex items-center gap-4 min-w-0 flex-1">
-      <div className={`p-3 rounded-xl border flex-shrink-0 ${getActivityColor(activity.type)}`}>
-        {getActivityIcon(activity.type)}
+      <div className={`p-3 rounded-xl border flex-shrink-0 ${getActivityColor(activity.sport)}`}>
+        {getActivityIcon(activity.sport)}
       </div>
       <div className="min-w-0 flex-1">
         <h4 className="font-semibold text-slate-900 truncate">{activity.name}</h4>
         <div className="flex items-center gap-3 text-xs text-slate-500 mt-1">
-          <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {format(new Date(activity.start_time), 'MMM d')}</span>
-          <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {format(new Date(activity.start_time), 'HH:mm')}</span>
+          {/* start_time_local is the wall clock where it happened, so it is displayed as is */}
+          <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {format(parseISO(activity.start_time_local), 'MMM d')}</span>
+          <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {format(parseISO(activity.start_time_local), 'HH:mm')}</span>
         </div>
       </div>
     </div>
     <div className="flex items-center gap-6 ml-4">
       <div className="text-right hidden sm:block">
-        <p className="font-bold text-slate-900 whitespace-nowrap">{(activity.distance / 1000).toFixed(1)} <span className="text-xs font-normal text-slate-500">km</span></p>
+        <p className="font-bold text-slate-900 whitespace-nowrap">{((activity.distance_m ?? 0) / 1000).toFixed(1)} <span className="text-xs font-normal text-slate-500">km</span></p>
       </div>
       <div className="text-right hidden md:block">
-        <p className="font-medium text-slate-900 whitespace-nowrap">{formatDuration(activity.duration)}</p>
+        <p className="font-medium text-slate-900 whitespace-nowrap">{formatDuration(activity.duration_s ?? 0)}</p>
       </div>
       <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-indigo-500 transition-colors flex-shrink-0" />
     </div>
@@ -140,33 +135,51 @@ const ActivityRow = ({ activity }: { activity: TrainingActivity }) => (
 );
 
 // --- Data Fetching ---
-async function getActivities() {
-  const { data, error } = await supabase
-    .from('activities')
-    .select('*')
-    .order('start_time', { ascending: false })
-    .limit(7);
+const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const ymd = (d: Date) => format(d, 'yyyy-MM-dd');
 
-  if (error) return [];
-  return data as TrainingActivity[];
+async function getDashboard() {
+  const today = localToday();
+  const monday = weekStart(today);
+  try {
+    const [snap, thisWeek, lastWeek] = await Promise.all([
+      garmin.snapshot({ days: 1, activities: 7, weeks: 0 }), // latest readiness + the 7 most recent activities
+      garmin.summary({ group: 'day', from: monday, to: today }), // this week, per day
+      garmin.summary({ group: 'day', from: ymd(subDays(parseISO(monday), 7)), to: ymd(subDays(parseISO(monday), 1)) }), // last week, per day
+    ]);
+    return { snap: snap.data, thisWeek: thisWeek.data, lastWeek: lastWeek.data, error: false };
+  } catch (e) {
+    // Show an explicit notice rather than stale or made-up numbers
+    console.error('garmin-api unavailable', e);
+    return { snap: null, thisWeek: [] as PeriodSummary[], lastWeek: [] as PeriodSummary[], error: true };
+  }
 }
 
 // --- Main Page ---
 export default async function Home() {
-  const activities = await getActivities();
-  
-  const totalDist = activities.reduce((acc, curr) => acc + (curr.distance || 0), 0) / 1000;
-  const totalTime = activities.reduce((acc, curr) => acc + (curr.duration || 0), 0);
-  
-  const chartData = [
-    { name: 'Mon', dist: 12 },
-    { name: 'Tue', dist: 45 },
-    { name: 'Wed', dist: 0 },
-    { name: 'Thu', dist: 25 },
-    { name: 'Fri', dist: 8 },
-    { name: 'Sat', dist: 120 },
-    { name: 'Sun', dist: 15 },
-  ];
+  const { snap, thisWeek, lastWeek, error } = await getDashboard();
+  const activities = snap?.recent_activities ?? [];
+
+  const today = localToday();
+  const monday = parseISO(weekStart(today));
+  const weekDays = DAY_NAMES.map((name, i) => ({ name, date: ymd(addDays(monday, i)) }));
+  const thisByDay = new Map(thisWeek.map(p => [p.period, p.totals]));
+  const lastByDay = new Map(lastWeek.map(p => [p.period, p.totals]));
+
+  // Real distance per day of the current week (km); the chart highlights the 100 km+ days
+  const chartData = weekDays.map(d => ({ name: d.name, dist: Math.round((thisByDay.get(d.date)?.distance_m ?? 0) / 100) / 10 }));
+
+  const elapsed = weekDays.filter(d => d.date <= today); // Monday .. today
+  const totalDist = elapsed.reduce((acc, d) => acc + (thisByDay.get(d.date)?.distance_m ?? 0), 0) / 1000;
+  const totalTime = elapsed.reduce((acc, d) => acc + (thisByDay.get(d.date)?.duration_s ?? 0), 0);
+
+  // Trend = this week so far vs the same weekdays last week (a full last week would always make Monday look like a drop)
+  const lastDist = elapsed.reduce((acc, d) => acc + (lastByDay.get(ymd(subDays(parseISO(d.date), 7)))?.distance_m ?? 0), 0) / 1000;
+  const pct = lastDist > 0 ? Math.round(((totalDist - lastDist) / lastDist) * 100) : null;
+  const distTrend = pct === null ? undefined : { label: `${pct >= 0 ? '+' : ''}${pct}%`, up: pct >= 0 };
+
+  const readiness = snap?.latest.readiness_score ?? null;
+  const readinessLevel = snap?.latest.readiness_level ?? null;
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -181,35 +194,39 @@ export default async function Home() {
               <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Training Overview</h1>
               <p className="text-slate-500 mt-1">Track your progress towards <span className="font-semibold text-indigo-600">The Ascend XTri</span></p>
             </div>
-            <div className="flex gap-3">
-              <button className="px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">
-                Sync Garmin
-              </button>
+            <div className="flex gap-3 items-start">
+              <SyncGarminButton />
               <button className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all">
                 + Add Session
               </button>
             </div>
           </div>
 
+          {error && (
+            <div className="p-4 bg-rose-50 border border-rose-100 text-rose-700 rounded-xl text-sm">
+              Garmin data is unavailable right now (garmin-api did not answer). Nothing is shown rather than stale numbers.
+            </div>
+          )}
+
           {/* Stats Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-            <StatCard 
-              title="Weekly Distance" 
-              value={`${totalDist.toFixed(1)} km`} 
-              sub="Total volume"
+            <StatCard
+              title="Weekly Distance"
+              value={`${totalDist.toFixed(1)} km`}
+              sub="This week so far"
               icon={<Trophy className="w-6 h-6" />}
-              trend="+12%"
+              trend={distTrend}
             />
-            <StatCard 
-              title="Training Time" 
-              value={formatDuration(totalTime)} 
-              sub="Active hours"
+            <StatCard
+              title="Training Time"
+              value={formatDuration(totalTime)}
+              sub="Active hours this week"
               icon={<Clock className="w-6 h-6" />}
             />
-            <StatCard 
-              title="Recovery Status" 
-              value="92%" 
-              sub="Ready to train"
+            <StatCard
+              title="Recovery Status"
+              value={readiness !== null ? String(readiness) : '—'}
+              sub={readinessLevel ? `Training readiness · ${READINESS_LABEL[readinessLevel] ?? readinessLevel}` : 'No readiness data yet'}
               icon={<Zap className="w-6 h-6" />}
             />
             <StatCard 

@@ -1,5 +1,4 @@
 
-import { supabase } from '@/lib/supabase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Activity, Bike, Waves, Zap, TrendingUp } from 'lucide-react';
 

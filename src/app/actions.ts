@@ -1,8 +1,8 @@
 
 'use server'
 
-import { supabase } from '@/lib/supabase';
-import { addDays, format, startOfWeek, endOfWeek, subDays } from 'date-fns';
+import { garmin, localToday } from '@/lib/garmin-api';
+import { addDays, format, parseISO, subDays } from 'date-fns';
 
 // --- Types ---
 export type DailyPlan = {
@@ -20,39 +20,48 @@ export type DailyPlan = {
 // 1. Calculate Load (TSS Approximation)
 // Load = Duration (min) * RPE (1-10)
 async function getRecentLoad() {
-  const { data: recentActivities } = await supabase
-    .from('activities')
-    .select('start_time, duration, type, avg_hr, max_hr')
-    .gte('start_time', subDays(new Date(), 28).toISOString()) // Last 4 weeks
-    .order('start_time', { ascending: true });
-
-  if (!recentActivities) return { atl: 0, ctl: 0, tsb: 0 };
+  // Days are local calendar days (Europe/Brussels), the same as the dates garmin-api stores.
+  const today = localToday();
+  let recentActivities;
+  try {
+    ({ data: recentActivities } = await garmin.activities({
+      from: format(subDays(parseISO(today), 28), 'yyyy-MM-dd'), // Last 4 weeks
+      to: today,
+      order: 'asc',
+      limit: 500,
+    }));
+  } catch (e) {
+    console.error('garmin-api unavailable, planning with a neutral load', e);
+    return { atl: 0, ctl: 0, tsb: 0 };
+  }
 
   // Calculate daily load approximation
   // If no HR, assume moderate intensity (RPE 5)
   // If HR, Load = Duration_min * (AvgHR / 180 * 10)
   const dailyLoads: Record<string, number> = {};
-  
-  recentActivities.forEach(a => {
-    const date = a.start_time.split('T')[0];
-    const minutes = a.duration / 60;
-    let intensityFactor = 0.6; // Default moderate
-    
-    if (a.avg_hr) {
-        intensityFactor = (a.avg_hr / 185); // Assuming 185 max HR for Nicnac
-    }
-    
-    const load = minutes * intensityFactor * 100; // Normalized scale
-    dailyLoads[date] = (dailyLoads[date] || 0) + load;
-  });
+
+  recentActivities
+    // A triathlon is stored as a "multisport" parent plus one activity per leg: count the legs only
+    .filter(a => a.sport !== 'multisport')
+    .forEach(a => {
+      const date = a.start_time_local.slice(0, 10);
+      const minutes = (a.duration_s ?? 0) / 60;
+      let intensityFactor = 0.6; // Default moderate
+
+      if (a.avg_hr) {
+          intensityFactor = (a.avg_hr / 185); // Assuming 185 max HR for Nicnac
+      }
+
+      const load = minutes * intensityFactor * 100; // Normalized scale
+      dailyLoads[date] = (dailyLoads[date] || 0) + load;
+    });
 
   // Simple rolling averages
-  const today = new Date();
   let atlSum = 0; // 7 days (Fatigue)
   let ctlSum = 0; // 42 days (Fitness) - abbreviated to 28 here for data availability
-  
+
   for (let i = 0; i < 28; i++) {
-    const d = subDays(today, i).toISOString().split('T')[0];
+    const d = format(subDays(parseISO(today), i), 'yyyy-MM-dd');
     const load = dailyLoads[d] || 0;
     ctlSum += load;
     if (i < 7) atlSum += load;
@@ -69,7 +78,7 @@ async function getRecentLoad() {
 export async function generateTrainingPlan(): Promise<DailyPlan[]> {
   const { atl, ctl, tsb } = await getRecentLoad();
   const plan: DailyPlan[] = [];
-  const today = new Date();
+  const today = parseISO(localToday()); // athlete's calendar day, not the server's (Vercel runs in UTC)
 
   // XTri Logic:
   // - Need Run volume (Hill reps)
@@ -157,13 +166,20 @@ export async function generateTrainingPlan(): Promise<DailyPlan[]> {
 }
 
 // 3. Sync Action
-export async function syncGarminData() {
-  // In a real deployed app, this would call an API route or separate worker.
-  // For local dev, we assume the node script is run separately or we trigger it via shell.
-  // Since we are running in Next.js server context, we can't easily spawn the node script 
-  // without blocking or configuration.
-  
-  // Mocking the success for the UI response, assuming the cron/script runs in background.
-  // In a production Vercel app, this would be a Function Duration limit issue.
-  return { success: true, message: "Sync initiated (Check logs)" };
+// Garmin is pulled into garmin-api by its own worker (4x/day) and this app only reads that cache, so
+// there is nothing to start from here: report how fresh the data is and when the next sync runs.
+export async function syncGarminData(): Promise<{ success: boolean; message: string }> {
+  try {
+    const { data } = await garmin.status();
+    if (data.garmin_auth.state === 'needs_login') {
+      return { success: false, message: 'Garmin login expired: run scripts/garmin-login.sh in the garmin-api repo.' };
+    }
+    const age = data.data_age_minutes;
+    const fresh = age === null ? 'No sync has completed yet' : age < 60 ? `Data is ${age} min old` : `Data is ${Math.round(age / 60)} h old`;
+    const next = data.next_runs[0] ? ` · next automatic sync ${data.next_runs[0].slice(11, 16)}` : '';
+    return { success: true, message: `${fresh}${data.sync_running ? ' · sync running now' : ''}${next}` };
+  } catch (e) {
+    console.error('garmin-api status failed', e);
+    return { success: false, message: 'garmin-api is unreachable right now.' };
+  }
 }
