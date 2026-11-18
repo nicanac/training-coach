@@ -8,3 +8,6 @@ Every AI agent (Claude Code, Google Antigravity, Gemini CLI, GitHub Copilot, Ope
 2. **Conventional Commits**: Format every commit message as `<type>(<scope>): <summary>` (e.g., `feat(ui): add dashboard filter`, `fix(api): handle empty payload`). Breaking changes use `!` or a `BREAKING CHANGE:` footer.
 3. **Merge to default branch**: Open a PR (`nicode-ci` runs verification on the VPS) or merge into `main` once verified.
 4. **Zero-Actions Release & Deploy**: GitHub Actions is disabled (`0` Action minutes used; no `.github/workflows/*.yml`). Merging/pushing to the default branch triggers `nicode-ci` on the VPS (`https://ci.nicode.eu/webhook`), which runs `release.mjs` (computes the next SemVer in `VERSION` / `package.json`, updates `CHANGELOG.md`, creates tag `vX.Y.Z` + GitHub Release) and triggers a single Dokploy deploy (`dk application.deploy`). You can also cut a release locally with `node ~/brain/scripts/release.mjs`.
+
+## Web Guidance (Mandatory)
+For any HTML, CSS, client-side JS/DOM, UI component, form, dialog/popover, accessibility, animation, or Core Web Vitals work, you **MUST** invoke the `modern-web-guidance` skill FIRST (`npx -y modern-web-guidance@latest search "<query>"` -> `retrieve "<id>"`) before writing code or adding dependencies. Reference: https://developer.chrome.com/docs/modern-web-guidance.
